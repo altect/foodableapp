@@ -1,0 +1,475 @@
+import wixData from 'wix-data';
+let most_recipe = {},
+    most_searched_cuisine = {},
+    most_searched_diet = {},
+    most_searched_meal = {};
+import _ from 'lodash';
+let un = ''
+$w.onReady(function () {
+    $w("#cusine").text = un;
+    $w("#mealText").text = un;
+    $w("#dietText").text = un;
+    $w("#ingredientText").text = un;
+    $w("#recipeText").text = un;
+    get_currentMonth(new Date())
+    var data = [
+        { date: '2024-02-01', uniqueVisitors: 100 },
+        { date: '2024-02-02', uniqueVisitors: 120 },
+        { date: '2024-02-03', uniqueVisitors: 150 },
+        { date: '2024-02-04', uniqueVisitors: 110 },
+        { date: '2024-02-05', uniqueVisitors: 130 },
+        // Add more data for each day of the month
+    ];
+
+    // $w("#html1").postMessage(data);
+    $w("#html1").onMessage((event) => {
+
+        if (event.data.type === 'ready') {
+            //  $w("#html1").postMessage(data);
+        }
+
+        if (event.data.type === 'click') {
+            //console.log( `The number of flights to ${event.data.label} in ${'year'} is ${event.data.value} million.`);
+
+        }
+    });
+    $w("#datePicker1").onChange((event) => {
+        get_currentMonth(new Date($w("#datePicker1").value))
+    });
+    $w("#recipeBtn").onClick((event) => {
+
+        open_lightBox(most_recipe)
+    });
+    $w("#ingredientBtn").onClick((event) => {
+
+        open_lightBox(most_searched_ingredient)
+    });
+    $w("#cuisineBtn").onClick((event) => {
+
+        open_lightBox(most_searched_cuisine)
+    });
+    $w("#dietBtn").onClick((event) => {
+
+        open_lightBox(most_searched_diet)
+    });
+    $w("#mealBtn").onClick((event) => {
+
+        open_lightBox(most_searched_meal)
+    });
+    get_most_clicked_recipe();
+    get_search_data();
+});
+
+function get_currentMonth(currentDate) {
+    // let currentDate = new Date();
+
+    // Get the first day of the current month
+    let startDate = new Date(currentDate);
+    startDate.setDate(startDate.getDate() - 30);
+
+    // Get the end date (current date)
+    let endDate = new Date(currentDate);
+    $w("#datePicker1").label = `Last 30 days ( ${startDate.toLocaleString('en-US', { month: 'short', day: 'numeric' }) } - 
+      ${ endDate.toLocaleString('en-US', { month: 'short', day: 'numeric' }) } )`
+
+    get_result(startDate, endDate)
+}
+
+function get_result(first_date, lastdate) {
+    wixData.query('Searches').between('_createdDate', first_date, lastdate).ascending('_createdDate').limit(1000).find()
+        .then((results) => {
+            console.log(results)
+            if (results.items.length > 0) {
+                process_result(results.items)
+            } else {
+                $w("#html1").postMessage([]);
+            }
+        }).catch((err) => {
+            console.log(err)
+        })
+
+}
+
+function process_result(data) {
+
+    // Step 1: Create an object to store unique owners for each date
+    const ownersByDate = {};
+
+    // Step 2: Populate the object
+    data.forEach(obj => {
+        const date = new Date(obj._createdDate).toISOString().substring(0, 10); // Extracting only the date part
+        const owner = obj._owner;
+
+        if (!ownersByDate[date]) {
+            ownersByDate[date] = new Set();
+        }
+
+        ownersByDate[date].add(owner);
+    });
+
+    // Step 3: Iterate through the object to count unique owners for each date
+    const result = [];
+    for (const date in ownersByDate) {
+        const uniqueVisitors = ownersByDate[date].size;
+        result.push({ uniqueVisitors, date: date });
+    }
+    $w("#html1").postMessage(result);
+    console.log(result);
+
+}
+let mostClickRecipe;
+export function get_most_clicked_recipe() {
+    $w("#recipeText").text = '';
+    wixData.query("Recipe")
+        .descending("clicked")
+        .limit(3)
+        .find()
+        .then((results) => {
+            if (results.items.length > 0) {
+
+                let item = results.items[0]; // see below
+                $w("#recipeText").text = item.title;
+                /*
+                mostClickRecipe = item;
+                most_recipe = {
+                    'title': item.title,
+                    'click': item.clicked + ' Clicks',
+                    'link': 'https://www.foodableapp.com' + item['link-recipe-title']
+                }
+                */
+                let topThreeRecipies = []
+                for (let index = 0; index < 3; index++) {
+                    if (results.items[index]) {
+                        let it = results.items[index]
+                        let x = [it.title, it.clicked]
+                        topThreeRecipies.push(x)
+
+                    } else {
+                        topThreeRecipies.push(['', ''])
+                    }
+
+                }
+
+                most_recipe = {
+                    title: 'Most Clicked Recipes',
+                    data: topThreeRecipies,
+                    text: 'Clicks No.'
+
+                }
+
+                let numItems = results.length; // 6
+                let hasNext = results.hasNext(); // false
+            } else {
+                // handle case where no matching items found
+            }
+        })
+        .catch((error) => {
+            let errorMsg = error.message;
+            let code = error.code;
+        });
+}
+import wixWindowFrontend from 'wix-window-frontend';
+
+function open_lightBox(d) {
+    /*
+        let d = {
+            title: title,
+            click: click,
+            link: link
+        }
+        console.log(d)
+    	*/
+    wixWindowFrontend.openLightbox('analytics', d)
+
+}
+
+function get_search_data() {
+    wixData.query('Searches').ascending('_createdDate').limit(1000).find()
+        .then(async (results) => {
+            while (results.hasNext()) {
+                console.log("---▼ Next Page ▼---");
+                results = await results.next();
+                console.log(results.items);
+            }
+            get_mostSearch_ingredient(results.items)
+            get_cuisine(results.items)
+            get_diet(results.items)
+            get_meal(results.items)
+        }).catch((err) => {
+            console.log(err)
+        })
+
+}
+let most_searched_ingredient = {}
+
+function get_mostSearch_ingredient(recipes) {
+    $w("#ingredientText").text = '';
+    // Example array of recipe objects
+    /*
+    const recipes = [
+        { title: "Spaghetti with tomato sauce and cheese" },
+        { title: "Chicken salad with lettuce, tomatoes, and dressing" },
+        { title: "Vegetable stir-fry with broccoli, carrots, and tofu" }
+    ];
+	*/
+    /*
+        // Step 1: Concatenate all ingredients into a single string
+        const allIngredients = recipes.map(recipe => recipe.title.split(' ')).flat().map(ingredient => ingredient.toLowerCase());
+
+        // Step 2: Count the occurrences of each ingredient after converting them to lowercase
+        const ingredientCounts = allIngredients.reduce((counts, ingredient) => {
+            counts[ingredient] = (counts[ingredient] || 0) + 1;
+            return counts;
+        }, {});
+
+        // Step 3: Find the ingredient with the highest count
+        let mostRepeatedIngredient;
+        let maxCount = 0;
+        for (const ingredient in ingredientCounts) {
+            if (ingredientCounts[ingredient] > maxCount) {
+                mostRepeatedIngredient = ingredient;
+                maxCount = ingredientCounts[ingredient];
+            }
+        }
+    mostRepeatedIngredient=_.startCase(mostRepeatedIngredient)
+        console.log("Most repeated ingredient:", mostRepeatedIngredient);
+        */
+
+    // Common words to exclude
+    const commonWords = ['with', 'and', ','];
+
+    // Step 1: Concatenate all ingredients into a single string and exclude common words
+    const allIngredients = recipes.map(recipe => recipe.title.toLowerCase().split(' '))
+        .flat()
+        .filter(ingredient => !commonWords.includes(ingredient) && ingredient.trim().length > 0);
+
+    // Step 2: Count the occurrences of each ingredient
+    const ingredientCounts = allIngredients.reduce((counts, ingredient) => {
+        counts[ingredient] = (counts[ingredient] || 0) + 1;
+        return counts;
+    }, {});
+
+    // Step 3: Sort the ingredientCounts object by count in descending order
+    const sortedIngredients = Object.entries(ingredientCounts).sort((a, b) => b[1] - a[1]);
+
+    // Step 4: Get the top three ingredients
+    const topThreeIngredients = sortedIngredients.slice(0, 3);
+    $w("#ingredientText").text = _.startCase(topThreeIngredients[0][0]);
+    console.log("Top three ingredients:", topThreeIngredients);
+
+    most_searched_ingredient = {
+        title: 'Most Searched Ingredients',
+        data: topThreeIngredients,
+        text: 'Seraches No.'
+    }
+
+}
+
+function get_cuisine(recipes) {
+    $w("#cusine").text = '';
+    /*
+	// Example array of recipe objects
+const recipes = [
+    { title: "Spaghetti with tomato sauce and cheese", cuisine: "Italian" },
+    { title: "Chicken salad with lettuce, tomatoes, and dressing", cuisine: "American" },
+    { title: "Vegetable stir-fry with broccoli, carrots, and tofu", cuisine: "chinese" },
+    { title: "Sushi rolls with salmon and avocado", cuisine: "Japanese" },
+    { title: "Tacos with beef, salsa, and guacamole", cuisine: "Mexican" },
+    { title: "Curry with chicken and vegetables", cuisine: "indian" },
+    { title: "Greek salad with feta cheese and olives", cuisine: "GREEK" }
+];
+*/
+    /*
+        // Step 1: Count the occurrences of each cuisine type after converting them to lowercase
+        const cuisineCounts = recipes.reduce((counts, recipe) => {
+            if (recipe.cuisine) {
+                const cuisine = recipe.cuisine.toLowerCase();
+                counts[cuisine] = (counts[cuisine] || 0) + 1;
+            }
+            return counts;
+        }, {});
+
+        // Step 2: Find the cuisine type with the highest count
+        let mostRepeatedCuisine;
+        let maxCount = 0;
+        for (const cuisine in cuisineCounts) {
+            if (cuisineCounts[cuisine] > maxCount) {
+                mostRepeatedCuisine = cuisine;
+                maxCount = cuisineCounts[cuisine];
+            }
+        }
+        mostRepeatedCuisine = _.startCase(mostRepeatedCuisine)
+        console.log("Most repeated cuisine:", mostRepeatedCuisine);
+        $w("#cusine").text = mostRepeatedCuisine;
+        most_searched_cuisine = {
+            title: mostRepeatedCuisine,
+            click: maxCount + ' Times Searched',
+
+        }
+        */
+    // Step 1: Count the occurrences of each cuisine type after converting them to lowercase
+    const cuisineCounts = recipes.reduce((counts, recipe) => {
+        if (recipe.cuisine) {
+            const cuisine = recipe.cuisine.toLowerCase();
+            counts[cuisine] = (counts[cuisine] || 0) + 1;
+        }
+        return counts;
+    }, {});
+
+    // Step 2: Sort the cuisineCounts object by count in descending order
+    const sortedCuisines = Object.entries(cuisineCounts).sort((a, b) => b[1] - a[1]);
+
+    // Step 3: Get the top three cuisines
+    const topThreeCuisines = sortedCuisines.slice(0, 3);
+
+    console.log("Top three cuisines:", topThreeCuisines);
+    $w("#cusine").text = _.startCase(topThreeCuisines[0][0]);
+    console.log("Top three ingredients:", topThreeCuisines);
+
+    most_searched_cuisine = {
+        title: 'Most Searched Cuisines',
+        data: topThreeCuisines,
+        text: 'Searches No.'
+
+    }
+}
+
+function get_diet(recipes) {
+    /*
+	// Example array of recipe objects
+const recipes = [
+    { title: "Vegetable Stir-Fry", diet: "Vegetarian" },
+    { title: "Grilled Chicken Salad", diet: "low carb" },
+    { title: "Spaghetti Bolognese", diet: "Low Carb" },
+    { title: "Tofu Curry", diet: "Vegetarian" },
+    { title: "Beef Burger", diet: "low carb" },
+    { title: "Mushroom Risotto", diet: "vegetarian" },
+    { title: "Salmon with Asparagus", diet: "pescatarian" },
+    { title: "Quinoa Salad", diet: "Vegetarian" }
+];
+*/
+    $w("#dietText").text == ''
+    /*
+    // Step 1: Count the occurrences of each diet type after converting them to lowercase
+    const dietCounts = recipes.reduce((counts, recipe) => {
+        if (recipe.diet) {
+            const diet = recipe.diet.toLowerCase();
+            counts[diet] = (counts[diet] || 0) + 1;
+        }
+        return counts;
+    }, {});
+
+    // Step 2: Find the diet type with the highest count
+    let mostRepeatedDiet;
+    let maxCount = 0;
+    for (const diet in dietCounts) {
+        if (dietCounts[diet] > maxCount) {
+            mostRepeatedDiet = diet;
+            maxCount = dietCounts[diet];
+        }
+    }
+    mostRepeatedDiet = _.startCase(mostRepeatedDiet)
+    console.log("Most repeated diet:", mostRepeatedDiet);
+    $w("#dietText").text = mostRepeatedDiet;
+    most_searched_diet = {
+        title: mostRepeatedDiet,
+        click: maxCount + ' Times Searched',
+
+    }
+    */ // Step 1: Count the occurrences of each diet type after converting them to lowercase
+    const dietCounts = recipes.reduce((counts, recipe) => {
+        if (recipe.diet) {
+            const diet = recipe.diet.toLowerCase();
+            counts[diet] = (counts[diet] || 0) + 1;
+        }
+        return counts;
+    }, {});
+
+    // Step 2: Sort the dietCounts object by count in descending order
+    const sortedDiets = Object.entries(dietCounts).sort((a, b) => b[1] - a[1]);
+
+    // Step 3: Get the top three diets
+    const topThreeDiets = sortedDiets.slice(0, 3);
+
+    console.log("Top three diets:", topThreeDiets);
+    $w("#dietText").text = _.startCase(topThreeDiets[0][0]);
+    console.log("Top three ingredients:", topThreeDiets);
+
+    most_searched_diet = {
+        title: 'Most Searched Diets',
+        data: topThreeDiets,
+        text: 'Searches No.'
+
+    }
+}
+
+function get_meal(recipes) {
+    $w("#mealText").text = '';
+    /*
+    // Example array of recipe objects
+const recipes = [
+    { title: "Vegetable Stir-Fry", meal: "lunch" },
+    { title: "Grilled Chicken Salad", meal: "dinner" },
+    { title: "Spaghetti Bolognese", meal: "dinner" },
+    { title: "Tofu Curry", meal: "lunch" },
+    { title: "Beef Burger", meal: "lunch" },
+    { title: "Mushroom Risotto", meal: "dinner" },
+    { title: "Salmon with Asparagus", meal: "dinner" },
+    { title: "Quinoa Salad", meal: "lunch" }
+];
+*/
+    /*
+        // Step 1: Count the occurrences of each meal type after converting them to lowercase
+        const mealCounts = recipes.reduce((counts, recipe) => {
+            if (recipe.meal) {
+                const meal = recipe.meal.toLowerCase();
+                counts[meal] = (counts[meal] || 0) + 1;
+            }
+            return counts;
+        }, {});
+
+        // Step 2: Find the meal type with the highest count
+        let mostRepeatedMeal;
+        let maxCount = 0;
+        for (const meal in mealCounts) {
+            if (mealCounts[meal] > maxCount) {
+                mostRepeatedMeal = meal;
+                maxCount = mealCounts[meal];
+            }
+        }
+        mostRepeatedMeal = _.startCase(mostRepeatedMeal)
+        console.log("Most repeated meal:", mostRepeatedMeal);
+        $w("#mealText").text = mostRepeatedMeal;
+        most_searched_meal = {
+            title: mostRepeatedMeal,
+            click: maxCount + ' Times Searched',
+
+        }
+        */
+    // Step 1: Count the occurrences of each meal type after converting them to lowercase
+    const mealCounts = recipes.reduce((counts, recipe) => {
+        if (recipe.meal) {
+            const meal = recipe.meal.toLowerCase();
+            counts[meal] = (counts[meal] || 0) + 1;
+        }
+        return counts;
+    }, {});
+
+    // Step 2: Sort the mealCounts object by count in descending order
+    const sortedMeals = Object.entries(mealCounts).sort((a, b) => b[1] - a[1]);
+
+    // Step 3: Get the top three meals
+    const topThreeMeals = sortedMeals.slice(0, 3);
+
+    console.log("Top three meals:", topThreeMeals);
+    $w("#mealText").text = _.startCase(topThreeMeals[0][0]);
+    console.log("Top three ingredients:", topThreeMeals);
+
+    most_searched_meal = {
+        title: 'Most Searched Meals',
+        data: topThreeMeals,
+        text: 'Searches No.'
+
+    }
+
+}
