@@ -1,0 +1,370 @@
+import wixData from 'wix-data';
+import wixWindowFrontend from 'wix-window-frontend';
+let allRecipe = [];
+import { fetch_tikTok } from 'backend/aModule.jsw'
+import { getJSON } from 'wix-fetch';
+// import wixUsers from 'wix-users';
+let userID = '';
+import wixWindow from 'wix-window';
+$w.onReady(function () {
+    if (wixWindow.formFactor === 'Mobile') {
+        $w("#datasetRecipe").setPageSize(4)
+        $w("#datasetAlternativeRecipe").setPageSize(4)
+    }
+    get_AllRecipe();
+    $w("#repeater1").onItemReady(($item, itemData, index) => {
+        try { if (!itemData.tikTok) { $item("#tikTokImage").hide() } } catch (err) {}
+        try { if (!itemData.instagram) { $item("#instagramImage").hide() } } catch (err) {}
+        $item("#container10").onClick((event) => {
+            $item("#loadImageItem").show()
+            wixWindowFrontend.openLightbox('recipe', itemData).then(() => {
+                $item("#loadImageItem").hide();
+                recipeUpdateCount(itemData)
+            })
+        })
+
+        if (itemData.recipeLink) {
+            if (itemData.tikTokEmbed) {
+                try {
+                    $item("#image1").src = itemData.tikTokEmbed.thumbnail_url;
+
+                    $item("#image1").show()
+                    $item("#image1").tooltip = itemData.title;
+                } catch (err) {}
+            } else {
+                let src = itemData.recipeLink;
+                getJSON(`https://www.tiktok.com/oembed?url=${encodeURIComponent(src)}`)
+                    .then((json) => {
+                        $item("#image1").src = json.thumbnail_url;
+                        $item("#image1").show()
+                        $item("#image1").tooltip = itemData.title;
+                        itemData['tikTokEmbed'] = json;
+                        recipeSaveData(itemData)
+                    })
+                    .catch((err) => {
+                        fetch_tikTok(itemData, src)
+                        console.log(err)
+
+                    });
+            }
+
+        }
+    });
+
+    //--------------------------------------------------------------------------------------------------------------------------------
+    $w("#repeater2").onItemReady(($item, itemData, index) => {
+        try { if (!itemData.tikTok) { $item("#tikTokImageAlt").hide() } } catch (err) {}
+        try { if (!itemData.instagram) { $item("#instagramImage").hide() } } catch (err) {}
+        $item("#container11").onClick((event) => {
+            $item("#loadImageItemAlt").show()
+            wixWindowFrontend.openLightbox('recipe', itemData).then(() => {
+                $item("#loadImageItemAlt").hide();
+                recipeUpdateCount(itemData)
+            })
+        })
+
+        if (itemData.recipeLink) {
+            if (itemData.tikTokEmbed) {
+                try {
+                    $item("#image5").src = itemData.tikTokEmbed.thumbnail_url;
+
+                    $item("#image5").show()
+                    $item("#image5").tooltip = itemData.title;
+                } catch (err) {}
+            } else {
+                let src = itemData.recipeLink;
+                getJSON(`https://www.tiktok.com/oembed?url=${encodeURIComponent(src)}`)
+                    .then((json) => {
+                        $item("#image5").src = json.thumbnail_url;
+                        $item("#image5").show()
+                        $item("#image5").tooltip = itemData.title;
+                        itemData['tikTokEmbed'] = json;
+                        recipeSaveData(itemData)
+                    })
+                    .catch((err) => {
+                        fetch_tikTok(itemData, src)
+                        console.log(err)
+
+                    });
+            }
+
+        }
+    });
+
+    //--------------------------------------------------------------------------------------------------------------------------------
+    let recipeUpdateCount = (item) => {
+        if (item.clicked) {
+            item.clicked = parseInt(item.clicked, 10) + 1;
+        } else {
+            item.clicked = 1;
+        }
+        wixData.update('Recipe', item);
+    }
+    let bulkRecipeUpdate = []
+    let recipeSaveData = (toUpdate) => {
+        bulkRecipeUpdate.push(toUpdate);
+        console.log(bulkRecipeUpdate.length)
+        if (bulkRecipeUpdate.length > 4) {
+            let tbR = bulkRecipeUpdate;
+            bulkRecipeUpdate = [];
+            wixData.bulkUpdate('Recipe', tbR);
+            console.log('BULK Update')
+        }
+    }
+
+    $w("#buttonSearch").onClick((event) => {
+        //// fast_query();
+        serach_validation();
+    })
+    $w("#resetBtn").onClick((event) => {
+        reset_User_inputs();
+        // fast_reset()
+        resetSearch()
+    });
+    $w("#inputIngredients").onKeyPress((event) => {
+        if (event.key === 'Enter' && $w("#inputIngredients").valid && $w("#inputIngredients").value.length > 0) {
+            start_search();
+        }
+    })
+    setInterval(() => {
+        get_AllRecipe();
+    }, 300000); //Refereh the recipe after every 5 minutes
+
+    $w("#MealDataset").onReady(() => {
+        $w("#MealDataset").setFilter(wixData.filter().ne('mealType', '').ne('mealType', null));
+    })
+    $w("#cuisineDataset").onReady(() => {
+        $w("#cuisineDataset").setFilter(wixData.filter().ne('cuisine', '').ne('cuisine', null));
+    })
+    $w("#dietDataset").onReady(() => {
+        $w("#dietDataset").setFilter(wixData.filter().ne('diet', '').ne('diet', null));
+    })
+
+    //  userID=wixUsers.currentUser.id;
+});
+
+function serach_validation() {
+    if ($w("#inputIngredients").valid || $w("#inputIngredients").value.trim().length > 0 ||
+        $w("#dropdownMeal").valid || $w("#dropdownCuisine").valid || $w("#dropdownDiet").valid) {
+        start_search();
+    }
+}
+async function get_AllRecipe() {
+    wixData.query('Recipe').limit(1000).find()
+        .then(async (results) => {
+            allRecipe = results.items;
+            while (results.hasNext()) {
+                results = await results.next();
+                allRecipe = allRecipe.concat(results.items);
+            }
+            // console.log(allRecipe)
+        })
+}
+
+function processUserInput(userInput) {
+    return userInput.replace(/[^\w\s]/g, '');
+}
+let ingredientFilter_, mealFilter_, cuisineFilter_, dietFilter_;
+
+function start_search() {
+    ingredientFilter_ = mealFilter_ = cuisineFilter_ = dietFilter_ = null;
+    beforeSearch()
+    let mainFilter = wixData.filter();
+
+    if ($w("#inputIngredients").valid && $w("#inputIngredients").value.trim().length > 0) {
+
+        const userInput = $w("#inputIngredients").value.trim();
+        // console.log(userInput)
+        const cleanedInput = processUserInput(userInput);
+        //console.log(cleanedInput)
+
+        // Split the cleaned input into individual words
+        const searchTerms = cleanedInput.split(/\s+/);
+        console.log(searchTerms)
+        let ingredientFilter = wixData.filter().contains('ingredients', searchTerms[0]);
+        ingredientFilter_ = ingredientFilter;
+        for (let index = 1; index < searchTerms.length; index++) {
+            ingredientFilter = ingredientFilter.and(wixData.filter().contains('ingredients', searchTerms[index]));
+            ingredientFilter_ = ingredientFilter_.or(wixData.filter().contains('ingredients', searchTerms[index]));
+        }
+
+        mainFilter = ingredientFilter;
+        alternativeRecipeFilter();
+
+    }
+    if ($w("#dropdownMeal").valid) {
+        mainFilter = mainFilter.contains('mealType', $w("#dropdownMeal").value)
+        mealFilter_ = wixData.filter().contains('mealType', $w("#dropdownMeal").value)
+
+    }
+    if ($w("#dropdownCuisine").valid) {
+        mainFilter = mainFilter.contains('cuisine', $w("#dropdownCuisine").value)
+        cuisineFilter_ = wixData.filter().contains('cuisine', $w("#dropdownCuisine").value)
+    }
+    if ($w("#dropdownDiet").valid) {
+        mainFilter = mainFilter.contains('diet', $w("#dropdownDiet").value)
+        dietFilter_ = wixData.filter().contains('diet', $w("#dropdownDiet").value)
+    }
+    $w("#datasetRecipe").setFilter(mainFilter)
+        .then(() => {
+            showResultsCount();
+        })
+
+    save_searches();
+
+}
+
+function query_search() {
+
+}
+
+function beforeSearch() {
+    $w("#loadImage").show();
+    $w("#boxRes").hide();
+}
+
+function showResultsCount() {
+    let count = $w("#datasetRecipe").getTotalCount();
+    if (count > 0) {
+        //   $w("#alterText").collapse();
+        exact_result_message_show();
+        $w("#pagination2").expand();
+
+    } else {
+        //  apply_alternativeSearch();
+          $w("#loadImage").hide();
+        $w("#pagination2").collapse();
+    }
+}
+
+function exact_result_message_show() {
+    $w("#textRes").text = `${$w("#datasetRecipe").getTotalCount()>0 ? $w("#datasetRecipe").getTotalCount().toString() : 'No' } Results Found`
+    $w("#boxRes").show();
+    $w("#loadImage").hide();
+}
+let alt_filter;
+
+function apply_alternativeSearch() {
+    console.log('apply new altrernative serach exist')
+    //  alt_filter=ingredientFilter_?ingredientFilter_:(mealFilter_?mealFilter_:(cuisineFilter_?cuisineFilter_:(dietFilter_?dietFilter_:wixData.filter())))
+
+    if (ingredientFilter_) {
+        alt_filter = ingredientFilter_;
+    } else {
+        if (mealFilter_) {
+            alt_filter = mealFilter_;
+        } else {
+            if (cuisineFilter_) {
+                alt_filter = cuisineFilter_
+            } else {
+                if (dietFilter_) {
+                    alt_filter = dietFilter_
+                } else {
+                    alt_filter = wixData.filter()
+                }
+            }
+        }
+    }
+    console.log(alt_filter)
+    $w("#datasetRecipe").setFilter(alt_filter)
+        .then(() => {
+            if ($w("#datasetRecipe").getTotalCount() > 0) {
+                exact_result_message_show();
+            } else {
+                let mainFilter = wixData.filter();
+                $w("#datasetRecipe").setFilter(mainFilter)
+                    .then(() => {
+                        //  $w("#alterText").expand();
+                        exact_result_message_show();
+                    })
+            }
+        })
+}
+
+function alternativeRecipeFilter() {
+    $w("#alternativeBox").collapse();
+    alt_filter = wixData.filter()
+    if (ingredientFilter_) {
+        alt_filter = alt_filter.and(ingredientFilter_);
+    }
+    if (mealFilter_) {
+        alt_filter = alt_filter.or(mealFilter_);
+    }
+    if (cuisineFilter_) {
+        alt_filter = alt_filter.or(cuisineFilter_)
+    }
+    if (dietFilter_) {
+        alt_filter = alt_filter.or(dietFilter_)
+    }
+    $w("#datasetAlternativeRecipe").setFilter(alt_filter)
+        .then(() => {
+            if ($w("#datasetAlternativeRecipe").getTotalCount() > 0) {
+                exact_result_message_show_alt();
+            } else {
+                let mainFilter = wixData.filter();
+                $w("#datasetAlternativeRecipe").setFilter(mainFilter)
+                    .then(() => {
+                        exact_result_message_show_alt();
+                    })
+            }
+        })
+}
+
+function exact_result_message_show_alt() {
+
+    let t = $w("#datasetAlternativeRecipe").getTotalCount();
+
+    let c = 10
+    if (t < 10) {
+        c = t - 1;
+    }
+    var randomNumber = Math.floor(Math.random() * c) + 1;
+
+    $w("#textResAlt").text = (t - randomNumber).toString() + ` Results Found`
+    $w("#boxResultAlt").show();
+    $w("#loadImage").hide();
+    $w("#alternativeBox").expand()
+
+}
+
+function resetSearch(params) {
+    beforeSearch();
+    let mainFilter = wixData.filter();
+    $w("#datasetRecipe").setFilter(mainFilter)
+        .then(() => {
+            showResultsCount();
+        })
+}
+
+let xundefined;
+
+function reset_User_inputs() {
+    $w('#inputIngredients').value = xundefined;
+    $w('#inputIngredients').resetValidityIndication()
+    $w("#dropdownMeal").value = xundefined;
+    $w("#dropdownMeal").resetValidityIndication()
+    $w("#dropdownCuisine").value = xundefined;
+    $w("#dropdownCuisine").resetValidityIndication()
+    $w("#dropdownDiet").value = xundefined;
+    $w("#dropdownDiet").resetValidityIndication()
+}
+
+export function save_searches() {
+
+    let toSave = {}
+    toSave['title'] = $w("#inputIngredients").valid ? $w("#inputIngredients").value.trim() : '';
+    toSave['meal'] = $w("#dropdownMeal").valid ? $w("#dropdownMeal").value : '';
+    toSave['cuisine'] = $w("#dropdownCuisine").valid ? $w("#dropdownCuisine").value : '';
+    toSave['diet'] = $w("#dropdownDiet").valid ? $w("#dropdownDiet").value : '';
+    //  toSave['userId']=userID;
+
+    wixData.save('Searches', toSave)
+}
+
+/**
+ *	Adds an event handler that runs when the dataset is ready.
+ */
+export function datasetRecipe_ready() {
+    //  $w("#datasetRecipe").setFilter(wixData.filter().isEmpty('tikTokEmbed'))
+
+}
