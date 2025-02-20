@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.bundle.min.js"></script>
+</head>
+<body onLoad="ready()">
+<canvas id="myChart" width="250" height="200"></canvas>
+<script>
+  var ctx = document.getElementById("myChart");
+
+  var myChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Unique Visitors for the Month',
+        data: [],
+        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      scales: {
+        yAxes: [{
+          ticks: {
+            beginAtZero: true
+          }
+        }]
+      }
+    }
+  });
+
+  window.onmessage = function(event) {
+    if (event.data && Array.isArray(event.data)) {
+      var dates = event.data.map(entry => entry.date);
+      var uniqueVisitors = event.data.map(entry => entry.uniqueVisitors);
+
+      myChart.data.labels = dates;
+      myChart.data.datasets[0].data = uniqueVisitors;
+      myChart.update();
+    }
+    else {
+      console.log("Received invalid data from parent window:");
+      console.log(event.data);
+    }
+  };
+
+  function ready() {
+    window.parent.postMessage({ "type": "ready" }, "*");
+  }
+</script>
+</body>
+</html>
