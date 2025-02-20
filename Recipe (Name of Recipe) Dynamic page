@@ -1,0 +1,242 @@
+import wixWindowFrontend from 'wix-window-frontend';
+import { fetch } from 'wix-fetch';
+import { get_k_calorieninjas } from 'backend/nutrition.jsw'
+let itemData;
+let key_calorieninjas;
+$w.onReady(async function () {
+
+    $w("#group1").hide()
+    $w("#dynamicDataset").onReady(async () => {
+        itemData = $w("#dynamicDataset").getCurrentItem();
+        set_textData();
+        if (itemData.tikTokEmbed) {
+            $w("#html2").src = 'https://www.tiktok.com/embed/v2/' + (itemData.tikTokEmbed.embed_product_id);
+
+        } else {
+            $w("#html2").hide();
+            try {
+                let src = itemData.recipeLink;
+                fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(src)}`)
+                    .then(response => {
+
+                        response.json().then((res) => {
+                          //  console.log(res)
+                            //    videoElement.innerHTML = res.html;
+                            $w("#html2").src = 'https://www.tiktok.com/embed/v2/' + (res.embed_product_id);
+                            $w("#html2").show();
+                            $w("#dynamicDataset").setFieldValue('tikTokEmbed', res)
+                            $w("#dynamicDataset").save();
+                        })
+                    })
+                    .catch(error => console.error('Error fetching TikTok data:', error));
+            } catch (err) {
+
+            }
+
+        }
+
+        key_calorieninjas = await get_k_calorieninjas();
+        if (itemData.nutritionFacts) {
+            set_nutritionChart(itemData.nutritionFacts)
+
+        } else {
+            if (itemData.ingredients) {
+                get_nutritionsFacts();
+            }
+        }
+        $w("#html3").postMessage('https://www.foodableapp.com' + itemData['link-recipe-title']);
+
+        recipeUpdateCount(itemData)
+    })
+    $w("#tikTok").target = '_blank'
+    $w("#instagram").target = '_blank'
+    $w("#userName").target = '_blank'
+
+     let recipeUpdateCount = (item) => {
+        if (item.clicked) {
+            item.clicked = parseInt(item.clicked, 10) + 1;
+        } else {
+            item.clicked = 1;
+        }
+        wixData.update('Recipe', item);
+    }
+
+});
+
+function set_textData() {
+    $w("#text1").text = itemData.recipeCreator ? itemData.recipeCreator : ''
+    $w("#text2").text = itemData.title ? itemData.title : ''
+    try {
+        $w("#userName").label = 'by @' + itemData.tikTokEmbed.author_unique_id;
+        $w("#userName").link = itemData.tikTok;
+    } catch (err) {
+
+        $w("#userName").collapse()
+    }
+    try { if (!itemData.tikTok) { $w("#tikTokBox").hide() } else { $w("#tikTok").link = itemData.tikTok } } catch (err) {}
+    try { if (!itemData.instagram) { $w("#instagramBox").hide() } else { $w("#instagram").link = itemData.instagram } } catch (err) {}
+    if (itemData.mealType) {
+        let opt = [{ label: itemData.mealType, value: itemData.mealType }]
+        $w("#selectionTagsMeal").options = opt
+    } else { $w("#selectionTagsMeal").options = [] }
+    if (itemData.cuisine) {
+        let opt = [{ label: itemData.cuisine, value: itemData.cuisine }]
+        $w("#selectionTagsCuisine").options = opt
+    } else { $w("#selectionTagsCuisine").options = [] }
+    if (itemData.diet) {
+        let opt = [{ label: itemData.diet, value: itemData.diet }]
+        $w("#selectionTagsDiet").options = opt
+    } else { $w("#selectionTagsDiet").options = [] }
+    $w("#text10").text = itemData.servingSize ? 'Serving Size: ' + itemData.servingSize : $w("#text10").text;
+    $w("#text4").text = itemData.ingredients ? itemData.ingredients : ''
+    $w("#group1").show()
+    $w("#loadImage").hide();
+}
+
+export function get_nutritionsFacts() {
+
+    let st = itemData.ingredients;
+    // let st = "•3 eggs  \n• , salt\n• pepper \n• cheese \n• sausage or bacon \n• 1 zero carb tortillas";
+    st = st.replace(/•|\n/g, '');
+    var query = st //'3lb carrots and a chicken sandwich';
+   // console.log(query)
+ const encodedQuery = encodeURIComponent(query);
+    fetch('https://api.calorieninjas.com/v1/nutrition?query=' +encodedQuery, {
+            "method": "get",
+            headers: {
+                'X-Api-Key': key_calorieninjas,
+            },
+        })
+        .then((httpResponse) => {
+           // console.log(httpResponse)
+            if (httpResponse.ok) {
+                return httpResponse.json().then((res) => {
+                 //   console.log(res);
+                    create_nutritionChart(res.items)
+                })
+            } else {
+                return Promise.reject("Fetch did not succeed");
+            }
+        })
+
+        .catch(err => console.log(err));
+}
+let totalNutrition = {
+
+    "calories": 0,
+    "serving_size_g": 0,
+    "fat_total_g": 0,
+    "fat_saturated_g": 0,
+    "protein_g": 0,
+    "sodium_mg": 0,
+    "potassium_mg": 0,
+    "cholesterol_mg": 0,
+    "carbohydrates_total_g": 0,
+    "fiber_g": 0,
+    "sugar_g": 0
+}
+export function create_nutritionChart(foodItems) {
+   // console.log()
+    foodItems.forEach(item => {
+        totalNutrition.calories += item.calories;
+        totalNutrition.serving_size_g += item.serving_size_g;
+        totalNutrition.fat_total_g += item.fat_total_g;
+        totalNutrition.fat_saturated_g += item.fat_saturated_g;
+        totalNutrition.protein_g += item.protein_g;
+        totalNutrition.sodium_mg += item.sodium_mg;
+        totalNutrition.potassium_mg += item.potassium_mg;
+        totalNutrition.cholesterol_mg += item.cholesterol_mg;
+        totalNutrition.carbohydrates_total_g += item.carbohydrates_total_g;
+        totalNutrition.fiber_g += item.fiber_g;
+        totalNutrition.sugar_g += item.sugar_g;
+    });
+    for (let key in totalNutrition) {
+        totalNutrition[key] = parseFloat(totalNutrition[key].toFixed(1));
+    }
+   // console.log(totalNutrition)
+    set_nutritionChart(totalNutrition)
+    save_nutritionChart(totalNutrition, foodItems);
+}
+import wixData from 'wix-data';
+
+function save_nutritionChart(totalNutrition, foodItems) {
+    itemData['nutritionFacts'] = totalNutrition;
+    itemData['itemsNutrition'] = foodItems
+    wixData.update('Recipe', itemData)
+}
+
+function set_nutritionChart(totalNutrition) {
+
+    $w("#text13").text = totalNutrition["calories"].toString(); //
+    $w("#text14").text = totalNutrition["fat_total_g"].toString() + ' g'; //
+    $w("#text16").text = totalNutrition["fat_saturated_g"].toString() + ' g';
+    $w("#text22").text = totalNutrition["cholesterol_mg"].toString() + ' mg';
+    $w("#text24").text = totalNutrition["sodium_mg"].toString() + ' mg';
+    $w("#text28").text = totalNutrition["potassium_mg"].toString() + ' mg';
+    $w("#text26").text = totalNutrition["carbohydrates_total_g"].toString() + ' g';
+    $w("#text30").text = totalNutrition["fiber_g"].toString() + ' g';
+    //   $w("#text14").text = totalNutrition["serving_size_g"];
+    $w("#text32").text = totalNutrition["sugar_g"].toString() + ' g';
+
+    $w("#text34").text = totalNutrition["protein_g"].toString() + ' g';
+
+    $w("#statebox8").changeState('state2')
+
+}
+/*
+{
+  "version": "1.0",
+  "type": "video",
+  "title": "Keto breakfast  burrito ##ketoburrito##keto##ketodiet##ketorecipes##fyp##fypbreakfast##breakfast##breakfastideas##ketoforbeginners##easybreakfast##eggs##eggsandwich##eggburrito",
+  "author_url": "https://www.tiktok.com/@mommapeaches5",
+  "author_name": "Mommapeaches5",
+  "width": "100%",
+  "height": "100%",
+  "html": "<blockquote class=\"tiktok-embed\" cite=\"https://www.tiktok.com/@mommapeaches5/video/7193399258802965803\" data-video-id=\"7193399258802965803\" data-embed-from=\"oembed\" style=\"max-width: 605px;min-width: 325px;\" > <section> <a target=\"_blank\" title=\"@mommapeaches5\" href=\"https://www.tiktok.com/@mommapeaches5?refer=embed\">@mommapeaches5</a> <p>Keto breakfast  burrito <a title=\"ketoburrito\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketoburrito?refer=embed\">#ketoburrito</a><a title=\"keto\" target=\"_blank\" href=\"https://www.tiktok.com/tag/keto?refer=embed\">#keto</a><a title=\"ketodiet\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketodiet?refer=embed\">#ketodiet</a><a title=\"ketorecipes\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketorecipes?refer=embed\">#ketorecipes</a><a title=\"fyp\" target=\"_blank\" href=\"https://www.tiktok.com/tag/fyp?refer=embed\">#fyp</a><a title=\"fypbreakfast\" target=\"_blank\" href=\"https://www.tiktok.com/tag/fypbreakfast?refer=embed\">#fypbreakfast</a><a title=\"breakfast\" target=\"_blank\" href=\"https://www.tiktok.com/tag/breakfast?refer=embed\">#breakfast</a><a title=\"breakfastideas\" target=\"_blank\" href=\"https://www.tiktok.com/tag/breakfastideas?refer=embed\">#breakfastideas</a><a title=\"ketoforbeginners\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketoforbeginners?refer=embed\">#ketoforbeginners</a><a title=\"easybreakfast\" target=\"_blank\" href=\"https://www.tiktok.com/tag/easybreakfast?refer=embed\">#easybreakfast</a><a title=\"eggs\" target=\"_blank\" href=\"https://www.tiktok.com/tag/eggs?refer=embed\">#eggs</a><a title=\"eggsandwich\" target=\"_blank\" href=\"https://www.tiktok.com/tag/eggsandwich?refer=embed\">#eggsandwich</a><a title=\"eggburrito\" target=\"_blank\" href=\"https://www.tiktok.com/tag/eggburrito?refer=embed\">#eggburrito</a></p> <a target=\"_blank\" title=\"♬ original sound - Mommapeaches5\" href=\"https://www.tiktok.com/music/original-sound-7193399322581453614?refer=embed\">♬ original sound - Mommapeaches5</a> </section> </blockquote> <script async src=\"https://www.tiktok.com/embed.js\"></script>",
+  "thumbnail_width": 576,
+  "thumbnail_height": 1024,
+  "thumbnail_url": "https://p16-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/2ace21c2b48e46f9ae1230809d363930_1674843805~tplv-dmt-logom:tos-useast5-i-0068-tx/ab0a219cc7694e13abb2f8e4fbb12cf5.image?x-expires=1706122800&x-signature=JvGVsNqs6961%2FTwA3nzx1Y6fh1Y%3D",
+  "provider_url": "https://www.tiktok.com",
+  "provider_name": "TikTok",
+  "author_unique_id": "mommapeaches5",
+  "embed_product_id": "7193399258802965803",
+  "embed_type": "video"
+}
+*/
+
+/*
+
+{
+  "servingSize": "1 serving\n",
+  "diet": "Keto\n",
+  "_id": "ea5117da-46e3-4c93-b3ed-4590f4ebfe3d",
+  "_owner": "2b487c65-6e0b-4815-b414-c2d1a0397f4a",
+  "_createdDate": "Mon Jan 22 2024 11:36:54 GMT+0500 (Pakistan Standard Time)",
+  "recipeLink": "https://www.tiktok.com/@mommapeaches5/video/7193399258802965803?is_from_webapp=1&sender_device=pc&web_id=7317243765109278210",
+  "tikTok": "https://www.tiktok.com/@mommapeaches5",
+  "_updatedDate": "Mon Jan 22 2024 23:50:18 GMT+0500 (Pakistan Standard Time)",
+  "cuisine": "American\n",
+  "mealType": "Lunch",
+  "ingredients": "\nSAMPLE RECIPE\n100%\nG3\n\n• 3 eggs  \n• salt\n• pepper \n• cheese \n• sausage or bacon \n• 1 zero carb tortillas\n \n \n \t\n• 3 eggs  \n• salt\n• pepper \n• cheese \n• sausage or bacon \n• 1 zero carb tortillas\nTurn on screen reader support\nTo enable screen reader support, press Ctrl+Alt+Z To learn about keyboard shortcuts, press Ctrl+slash",
+  "title": "Breakfast Sandwich\n",
+  "recipeCreator": "Abby Jacobson (Easy Keto Low Carb Style)\n",
+  "tikTokEmbed": {
+    "version": "1.0",
+    "type": "video",
+    "title": "Keto breakfast  burrito ##ketoburrito##keto##ketodiet##ketorecipes##fyp##fypbreakfast##breakfast##breakfastideas##ketoforbeginners##easybreakfast##eggs##eggsandwich##eggburrito",
+    "author_url": "https://www.tiktok.com/@mommapeaches5",
+    "author_name": "Mommapeaches5",
+    "width": "100%",
+    "height": "100%",
+    "html": "<blockquote class=\"tiktok-embed\" cite=\"https://www.tiktok.com/@mommapeaches5/video/7193399258802965803\" data-video-id=\"7193399258802965803\" data-embed-from=\"oembed\" style=\"max-width: 605px;min-width: 325px;\" > <section> <a target=\"_blank\" title=\"@mommapeaches5\" href=\"https://www.tiktok.com/@mommapeaches5?refer=embed\">@mommapeaches5</a> <p>Keto breakfast  burrito <a title=\"ketoburrito\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketoburrito?refer=embed\">#ketoburrito</a><a title=\"keto\" target=\"_blank\" href=\"https://www.tiktok.com/tag/keto?refer=embed\">#keto</a><a title=\"ketodiet\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketodiet?refer=embed\">#ketodiet</a><a title=\"ketorecipes\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketorecipes?refer=embed\">#ketorecipes</a><a title=\"fyp\" target=\"_blank\" href=\"https://www.tiktok.com/tag/fyp?refer=embed\">#fyp</a><a title=\"fypbreakfast\" target=\"_blank\" href=\"https://www.tiktok.com/tag/fypbreakfast?refer=embed\">#fypbreakfast</a><a title=\"breakfast\" target=\"_blank\" href=\"https://www.tiktok.com/tag/breakfast?refer=embed\">#breakfast</a><a title=\"breakfastideas\" target=\"_blank\" href=\"https://www.tiktok.com/tag/breakfastideas?refer=embed\">#breakfastideas</a><a title=\"ketoforbeginners\" target=\"_blank\" href=\"https://www.tiktok.com/tag/ketoforbeginners?refer=embed\">#ketoforbeginners</a><a title=\"easybreakfast\" target=\"_blank\" href=\"https://www.tiktok.com/tag/easybreakfast?refer=embed\">#easybreakfast</a><a title=\"eggs\" target=\"_blank\" href=\"https://www.tiktok.com/tag/eggs?refer=embed\">#eggs</a><a title=\"eggsandwich\" target=\"_blank\" href=\"https://www.tiktok.com/tag/eggsandwich?refer=embed\">#eggsandwich</a><a title=\"eggburrito\" target=\"_blank\" href=\"https://www.tiktok.com/tag/eggburrito?refer=embed\">#eggburrito</a></p> <a target=\"_blank\" title=\"♬ original sound - Mommapeaches5\" href=\"https://www.tiktok.com/music/original-sound-7193399322581453614?refer=embed\">♬ original sound - Mommapeaches5</a> </section> </blockquote> <script async src=\"https://www.tiktok.com/embed.js\"></script>",
+    "thumbnail_width": 576,
+    "thumbnail_height": 1024,
+    "thumbnail_url": "https://p16-sign.tiktokcdn-us.com/tos-useast5-p-0068-tx/2ace21c2b48e46f9ae1230809d363930_1674843805~tplv-dmt-logom:tos-useast5-i-0068-tx/ab0a219cc7694e13abb2f8e4fbb12cf5.image?x-expires=1706158800&x-signature=%2B21mOJMUQZIbBGl5GX8Q6DxpG%2FA%3D",
+    "provider_url": "https://www.tiktok.com",
+    "provider_name": "TikTok",
+    "author_unique_id": "mommapeaches5",
+    "embed_product_id": "7193399258802965803",
+    "embed_type": "video"
+  }
+}tikTokEmbed.tikTokEmbed.author_unique_id
+*/
